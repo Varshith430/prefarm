@@ -8,3 +8,4 @@ export * from "./sensor";
 export * from "./task";
 export * from "./inventory";
 export * from "./marketplace";
+export * from "./offer";

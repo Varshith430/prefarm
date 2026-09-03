@@ -116,6 +116,14 @@ enum ListingStatus {
   @@map("listing_status")
 }
 
+enum OfferStatus {
+  pending
+  accepted
+  rejected
+
+  @@map("offer_status")
+}
+
 // ---------------------------------------------------------------------------
 // Tenancy
 // ---------------------------------------------------------------------------
@@ -127,7 +135,7 @@ model Organization {
   description      String?
   organizationType OrganizationType @map("organization_type")
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   members   OrganizationMember[]
   farms     Farm[]
@@ -135,6 +143,8 @@ model Organization {
   tasks     Task[]
   inventory InventoryItem[]
   listings  MarketplaceListing[]
+  /// Offers this organization has made on other organizations' listings.
+  offers    Offer[]
 
   @@index([organizationType], map: "organizations_type_idx")
   @@map("organizations")
@@ -149,12 +159,13 @@ model User {
   /// Omitted from every query by default — see the `omit` block in lib/prisma.ts.
   passwordHash String?  @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   memberships       OrganizationMember[]
   assignedTasks     Task[]
   recordedMovements InventoryMovement[]
   sessions          Session[]
+  placedOffers      Offer[]
 
   @@map("users")
 }
@@ -171,7 +182,7 @@ model Session {
   /// CHECK (expires_at > created_at)
   expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId], map: "sessions_user_id_idx")
   @@index([expiresAt], map: "sessions_expires_at_idx")
@@ -184,8 +195,8 @@ model OrganizationMember {
   role           MembershipRole @default(viewer)
   joinedAt       DateTime       @default(now()) @map("joined_at") @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([organizationId, userId])
   @@map("organization_members")
@@ -204,9 +215,9 @@ model Farm {
   areaHectares   Decimal    @default(0) @map("area_hectares") @db.Decimal(12, 3)
   status         FarmStatus @default(active)
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   fields       Field[]
   tasks        Task[]
 
@@ -224,7 +235,7 @@ model Field {
   status       FieldStatus @default(active)
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  farm       Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  farm       Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   cropCycles CropCycle[]
   sensors    Sensor[]
   tasks      Task[]
@@ -247,7 +258,7 @@ model Crop {
   /// CHECK (typical_days_to_harvest > 0)
   typicalDaysToHarvest Int?    @map("typical_days_to_harvest")
 
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   cycles       CropCycle[]
 
   @@unique([organizationId, name, variety])
@@ -274,8 +285,8 @@ model CropCycle {
   notes           String?
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  field    Field                @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  crop     Crop                 @relation(fields: [cropId], references: [id], onDelete: Restrict)
+  field    Field                @relation(fields: [fieldId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  crop     Crop                 @relation(fields: [cropId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   tasks    Task[]
   listings MarketplaceListing[]
 
@@ -298,7 +309,7 @@ model Sensor {
   installedAt DateTime?  @map("installed_at") @db.Timestamptz(6)
   isActive    Boolean    @default(true) @map("is_active")
 
-  field    Field           @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  field    Field           @relation(fields: [fieldId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   readings SensorReading[]
 
   @@unique([fieldId, name])
@@ -312,7 +323,7 @@ model SensorReading {
   recordedAt DateTime @map("recorded_at") @db.Timestamptz(6)
   value      Decimal  @db.Decimal(14, 5)
 
-  sensor Sensor @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  sensor Sensor @relation(fields: [sensorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([sensorId, recordedAt])
   @@index([sensorId, recordedAt(sort: Desc)], map: "sensor_readings_sensor_recorded_idx")
@@ -340,11 +351,11 @@ model Task {
   completedAt DateTime?    @map("completed_at") @db.Timestamptz(6)
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  farm         Farm?        @relation(fields: [farmId], references: [id], onDelete: Cascade)
-  field        Field?       @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  cropCycle    CropCycle?   @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
-  assignee     User?        @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  farm         Farm?        @relation(fields: [farmId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  field        Field?       @relation(fields: [fieldId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cropCycle    CropCycle?   @relation(fields: [cropCycleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  assignee     User?        @relation(fields: [assignedTo], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([organizationId, status], map: "tasks_organization_status_idx")
   @@index([dueAt], map: "tasks_due_at_idx")
@@ -367,7 +378,7 @@ model InventoryItem {
   reorderLevel   Decimal  @default(0) @map("reorder_level") @db.Decimal(14, 3)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   movements    InventoryMovement[]
 
   @@unique([organizationId, name])
@@ -385,8 +396,8 @@ model InventoryMovement {
   reference       String?
   notes           String?
 
-  item     InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
-  recorder User?         @relation(fields: [recordedBy], references: [id], onDelete: SetNull)
+  item     InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recorder User?         @relation(fields: [recordedBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([inventoryItemId, occurredAt(sort: Desc)], map: "inventory_movements_item_occurred_idx")
   @@map("inventory_movements")
@@ -410,11 +421,50 @@ model MarketplaceListing {
   availableFrom DateTime?     @map("available_from") @db.Date
   status        ListingStatus @default(draft)
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  cropCycle    CropCycle?   @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cropCycle    CropCycle?   @relation(fields: [cropCycleId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  offers       Offer[]
 
   @@index([status], map: "marketplace_listings_status_idx")
   @@map("marketplace_listings")
+}
+
+/// A buyer's bid on a listing.
+///
+/// Made by an organization rather than a person: the whole buying side needs
+/// to see and act on it, and every authorization check in the API resolves an
+/// owning organization. `buyerId` records which member placed it and is nulled
+/// when they leave, so the offer outlives the person.
+///
+/// NOTE: Prisma cannot express the partial unique index that allows only one
+/// `pending` offer per buyer per listing
+/// (`offers_one_pending_per_buyer_idx`), nor the CHECK constraints below.
+/// db/schema.sql remains authoritative for both.
+model Offer {
+  id                  String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  listingId           String  @map("listing_id") @db.Uuid
+  buyerOrganizationId String  @map("buyer_organization_id") @db.Uuid
+  buyerId             String? @map("buyer_id") @db.Uuid
+
+  /// In the listing's unit (kilograms). CHECK (price_per_unit >= 0)
+  pricePerUnit Decimal     @map("price_per_unit") @db.Decimal(12, 2)
+  /// CHECK (quantity > 0)
+  quantity     Decimal     @db.Decimal(14, 2)
+  status       OfferStatus @default(pending)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // `onUpdate: NoAction` matches the DDL in db/schema.sql, which leaves the
+  // SQL default in place. Prisma would otherwise assume ON UPDATE CASCADE and
+  // report drift against the real table on every `prisma migrate diff`.
+  listing           MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  buyerOrganization Organization       @relation(fields: [buyerOrganizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  buyer             User?              @relation(fields: [buyerId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([listingId, createdAt(sort: Desc)], map: "offers_listing_created_idx")
+  @@index([buyerOrganizationId], map: "offers_buyer_organization_idx")
+  @@index([status], map: "offers_status_idx")
+  @@map("offers")
 }

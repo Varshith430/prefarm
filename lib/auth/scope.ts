@@ -103,6 +103,43 @@ const LOOKUPS: Record<ResourceKind, (id: string) => Promise<Owner>> = {
   },
 };
 
+/**
+ * The two organizations an offer sits between.
+ *
+ * Offers are the one resource with two owners — the buyer who made the bid and
+ * the seller who owns the listing — so `requireResourceRole`, which resolves a
+ * single owning organization, cannot express who may do what here. Callers
+ * take this and decide per action: reading is open to either side, answering
+ * belongs to the seller alone.
+ */
+export interface OfferParties {
+  status: string;
+  listingId: string;
+  buyerOrganizationId: string;
+  sellerOrganizationId: string;
+}
+
+export async function findOfferParties(id: string): Promise<OfferParties | null> {
+  const offer = await prisma.offer.findUnique({
+    where: { id },
+    select: {
+      status: true,
+      listingId: true,
+      buyerOrganizationId: true,
+      listing: { select: { organizationId: true } },
+    },
+  });
+
+  if (!offer) return null;
+
+  return {
+    status: offer.status,
+    listingId: offer.listingId,
+    buyerOrganizationId: offer.buyerOrganizationId,
+    sellerOrganizationId: offer.listing.organizationId,
+  };
+}
+
 export type ResourceAccess =
   | { ok: true; organizationId: string | null }
   | { ok: false; response: Response };

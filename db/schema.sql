@@ -16,6 +16,7 @@ CREATE TYPE task_status AS ENUM ('todo', 'in_progress', 'done', 'cancelled');
 CREATE TYPE task_priority AS ENUM ('low', 'normal', 'high', 'urgent');
 CREATE TYPE movement_type AS ENUM ('purchase', 'usage', 'adjustment', 'transfer');
 CREATE TYPE listing_status AS ENUM ('draft', 'active', 'sold', 'archived');
+CREATE TYPE offer_status AS ENUM ('pending', 'accepted', 'rejected');
 
 CREATE TABLE organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -183,6 +184,24 @@ CREATE TABLE marketplace_listings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Offers are made by an organization, not a person: the whole buying side
+-- needs to see them, and every authorization check resolves an owning
+-- organization. `buyer_id` records who placed it and is nulled when that
+-- person leaves, so the offer outlives them.
+CREATE TABLE offers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+    buyer_organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    buyer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    -- Denominated in the listing's unit (kilograms), with the precision and
+    -- scale of marketplace_listings.price_per_kg and quantity_kg.
+    price_per_unit NUMERIC(12, 2) NOT NULL CHECK (price_per_unit >= 0),
+    quantity NUMERIC(14, 2) NOT NULL CHECK (quantity > 0),
+    status offer_status NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX organizations_type_idx ON organizations(organization_type);
 CREATE INDEX sessions_user_id_idx ON sessions(user_id);
 CREATE INDEX sessions_expires_at_idx ON sessions(expires_at);
@@ -195,6 +214,15 @@ CREATE INDEX tasks_organization_status_idx ON tasks(organization_id, status);
 CREATE INDEX tasks_due_at_idx ON tasks(due_at);
 CREATE INDEX inventory_movements_item_occurred_idx ON inventory_movements(inventory_item_id, occurred_at DESC);
 CREATE INDEX marketplace_listings_status_idx ON marketplace_listings(status);
+CREATE INDEX offers_listing_created_idx ON offers(listing_id, created_at DESC);
+CREATE INDEX offers_buyer_organization_idx ON offers(buyer_organization_id);
+CREATE INDEX offers_status_idx ON offers(status);
+
+-- One live offer per buyer per listing: a better bid replaces the standing
+-- one, but a buyer whose offer was rejected may make a new one.
+CREATE UNIQUE INDEX offers_one_pending_per_buyer_idx
+    ON offers(listing_id, buyer_organization_id)
+    WHERE status = 'pending';
 
 -- Keep updated_at consistent for entities edited over time.
 CREATE OR REPLACE FUNCTION set_updated_at()
@@ -219,4 +247,8 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER marketplace_listings_set_updated_at
 BEFORE UPDATE ON marketplace_listings
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER offers_set_updated_at
+BEFORE UPDATE ON offers
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();

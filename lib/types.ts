@@ -20,6 +20,7 @@ import type {
   InventoryItemModel as InventoryItem,
   InventoryMovementModel as InventoryMovement,
   MarketplaceListingModel as MarketplaceListing,
+  OfferModel as Offer,
   OrganizationMemberModel as OrganizationMember,
   OrganizationModel as Organization,
   SensorModel as Sensor,
@@ -36,6 +37,7 @@ export {
   FieldStatus,
   ListingStatus,
   MembershipRole,
+  OfferStatus,
   MovementType,
   SensorType,
   TaskPriority,
@@ -50,6 +52,7 @@ export type {
   InventoryItem,
   InventoryMovement,
   MarketplaceListing,
+  Offer,
   Organization,
   OrganizationMember,
   Sensor,
@@ -109,6 +112,13 @@ export type MarketplaceListingWithCycle = MarketplaceListing & {
   cropCycle: CropCycleWithCrop | null;
 };
 
+/** A bid as the seller sees it: who is bidding, and on which listing. */
+export type OfferWithParties = Offer & {
+  listing: MarketplaceListing;
+  buyerOrganization: Organization;
+  buyer: User | null;
+};
+
 // ---------------------------------------------------------------------------
 // Wire-safe shapes
 //
@@ -145,6 +155,7 @@ export type TaskDTO = Serialized<Task>;
 export type InventoryItemDTO = Serialized<InventoryItem>;
 export type InventoryMovementDTO = Serialized<InventoryMovement>;
 export type MarketplaceListingDTO = Serialized<MarketplaceListing>;
+export type OfferDTO = Serialized<Offer>;
 
 // ---------------------------------------------------------------------------
 // Transport helpers
