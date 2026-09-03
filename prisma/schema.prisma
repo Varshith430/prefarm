@@ -1,0 +1,420 @@
+// AgriTech platform — Prisma schema
+//
+// This mirrors db/schema.sql (PostgreSQL 15+). Database identifiers stay
+// snake_case via @map/@@map so this schema matches an existing database.
+//
+// NOTE: Postgres CHECK constraints and the set_updated_at() triggers in
+// db/schema.sql cannot be expressed in the Prisma schema language. They are
+// documented here as comments, enforced in the Zod schemas (lib/validations),
+// and must be re-applied by hand in any generated migration. See db/schema.sql
+// for the authoritative DDL.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum OrganizationType {
+  farm
+  cooperative
+  buyer
+  processor
+  distributor
+  retailer
+  input_supplier
+  logistics
+  service_provider
+
+  @@map("organization_type")
+}
+
+enum MembershipRole {
+  owner
+  manager
+  operator
+  viewer
+
+  @@map("membership_role")
+}
+
+enum FarmStatus {
+  active
+  archived
+
+  @@map("farm_status")
+}
+
+enum FieldStatus {
+  active
+  fallow
+  archived
+
+  @@map("field_status")
+}
+
+enum CropCycleStatus {
+  planned
+  growing
+  harvested
+  cancelled
+
+  @@map("crop_cycle_status")
+}
+
+enum SensorType {
+  soil_moisture
+  temperature
+  humidity
+  ph
+  rainfall
+  light
+
+  @@map("sensor_type")
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+  cancelled
+
+  @@map("task_status")
+}
+
+enum TaskPriority {
+  low
+  normal
+  high
+  urgent
+
+  @@map("task_priority")
+}
+
+enum MovementType {
+  purchase
+  usage
+  adjustment
+  transfer
+
+  @@map("movement_type")
+}
+
+enum ListingStatus {
+  draft
+  active
+  sold
+  archived
+
+  @@map("listing_status")
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  slug             String           @unique
+  description      String?
+  organizationType OrganizationType @map("organization_type")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members   OrganizationMember[]
+  farms     Farm[]
+  crops     Crop[]
+  tasks     Task[]
+  inventory InventoryItem[]
+  listings  MarketplaceListing[]
+
+  @@index([organizationType], map: "organizations_type_idx")
+  @@map("organizations")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  fullName     String   @map("full_name")
+  phone        String?
+  /// NULL means the account has no password yet and cannot be signed into.
+  /// Omitted from every query by default — see the `omit` block in lib/prisma.ts.
+  passwordHash String?  @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships       OrganizationMember[]
+  assignedTasks     Task[]
+  recordedMovements InventoryMovement[]
+  sessions          Session[]
+
+  @@map("users")
+}
+
+/// Server-side sessions, so a sign-in can be revoked. `tokenHash` is a SHA-256
+/// of the session token; the token itself is never stored.
+model Session {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  tokenHash  String   @unique @map("token_hash")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime @default(now()) @map("last_used_at") @db.Timestamptz(6)
+  /// CHECK (expires_at > created_at)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "sessions_user_id_idx")
+  @@index([expiresAt], map: "sessions_expires_at_idx")
+  @@map("sessions")
+}
+
+model OrganizationMember {
+  organizationId String         @map("organization_id") @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  role           MembershipRole @default(viewer)
+  joinedAt       DateTime       @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@map("organization_members")
+}
+
+// ---------------------------------------------------------------------------
+// Land
+// ---------------------------------------------------------------------------
+
+model Farm {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  name           String
+  location       String?
+  /// CHECK (area_hectares >= 0)
+  areaHectares   Decimal    @default(0) @map("area_hectares") @db.Decimal(12, 3)
+  status         FarmStatus @default(active)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fields       Field[]
+  tasks        Task[]
+
+  @@unique([organizationId, name])
+  @@map("farms")
+}
+
+model Field {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  farmId       String      @map("farm_id") @db.Uuid
+  name         String
+  /// CHECK (area_hectares > 0)
+  areaHectares Decimal     @map("area_hectares") @db.Decimal(12, 3)
+  soilType     String?     @map("soil_type")
+  status       FieldStatus @default(active)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  farm       Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  cropCycles CropCycle[]
+  sensors    Sensor[]
+  tasks      Task[]
+
+  @@unique([farmId, name])
+  @@index([farmId], map: "fields_farm_id_idx")
+  @@map("fields")
+}
+
+// ---------------------------------------------------------------------------
+// Crops
+// ---------------------------------------------------------------------------
+
+model Crop {
+  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Null for platform-wide crops shared across organizations.
+  organizationId       String? @map("organization_id") @db.Uuid
+  name                 String
+  variety              String?
+  /// CHECK (typical_days_to_harvest > 0)
+  typicalDaysToHarvest Int?    @map("typical_days_to_harvest")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cycles       CropCycle[]
+
+  @@unique([organizationId, name, variety])
+  @@map("crops")
+}
+
+model CropCycle {
+  id      String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fieldId String @map("field_id") @db.Uuid
+  cropId  String @map("crop_id") @db.Uuid
+  season  String
+
+  plantedOn         DateTime? @map("planted_on") @db.Date
+  /// CHECK (expected_harvest_on >= planted_on)
+  expectedHarvestOn DateTime? @map("expected_harvest_on") @db.Date
+  /// CHECK (harvested_on >= planted_on)
+  harvestedOn       DateTime? @map("harvested_on") @db.Date
+
+  status          CropCycleStatus @default(planned)
+  /// CHECK (expected_yield_kg >= 0)
+  expectedYieldKg Decimal?        @map("expected_yield_kg") @db.Decimal(14, 2)
+  /// CHECK (actual_yield_kg >= 0)
+  actualYieldKg   Decimal?        @map("actual_yield_kg") @db.Decimal(14, 2)
+  notes           String?
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  field    Field                @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  crop     Crop                 @relation(fields: [cropId], references: [id], onDelete: Restrict)
+  tasks    Task[]
+  listings MarketplaceListing[]
+
+  @@index([fieldId], map: "crop_cycles_field_id_idx")
+  @@index([status], map: "crop_cycles_status_idx")
+  @@map("crop_cycles")
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+
+model Sensor {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fieldId     String     @map("field_id") @db.Uuid
+  name        String
+  sensorType  SensorType @map("sensor_type")
+  unit        String
+  externalId  String?    @unique @map("external_id")
+  installedAt DateTime?  @map("installed_at") @db.Timestamptz(6)
+  isActive    Boolean    @default(true) @map("is_active")
+
+  field    Field           @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  readings SensorReading[]
+
+  @@unique([fieldId, name])
+  @@index([fieldId], map: "sensors_field_id_idx")
+  @@map("sensors")
+}
+
+model SensorReading {
+  id         BigInt   @id @default(autoincrement())
+  sensorId   String   @map("sensor_id") @db.Uuid
+  recordedAt DateTime @map("recorded_at") @db.Timestamptz(6)
+  value      Decimal  @db.Decimal(14, 5)
+
+  sensor Sensor @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+
+  @@unique([sensorId, recordedAt])
+  @@index([sensorId, recordedAt(sort: Desc)], map: "sensor_readings_sensor_recorded_idx")
+  @@map("sensor_readings")
+}
+
+// ---------------------------------------------------------------------------
+// Field operations
+// ---------------------------------------------------------------------------
+
+model Task {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  farmId         String? @map("farm_id") @db.Uuid
+  fieldId        String? @map("field_id") @db.Uuid
+  cropCycleId    String? @map("crop_cycle_id") @db.Uuid
+  assignedTo     String? @map("assigned_to") @db.Uuid
+
+  title       String
+  description String?
+  dueAt       DateTime?    @map("due_at") @db.Timestamptz(6)
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(normal)
+  /// CHECK (completed_at IS NULL OR status = 'done')
+  completedAt DateTime?    @map("completed_at") @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farm         Farm?        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  field        Field?       @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  cropCycle    CropCycle?   @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
+  assignee     User?        @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status], map: "tasks_organization_status_idx")
+  @@index([dueAt], map: "tasks_due_at_idx")
+  @@map("tasks")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory
+// ---------------------------------------------------------------------------
+
+model InventoryItem {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  category       String
+  unit           String
+  /// CHECK (quantity >= 0)
+  quantity       Decimal  @default(0) @db.Decimal(14, 3)
+  /// CHECK (reorder_level >= 0)
+  reorderLevel   Decimal  @default(0) @map("reorder_level") @db.Decimal(14, 3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  movements    InventoryMovement[]
+
+  @@unique([organizationId, name])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inventoryItemId String       @map("inventory_item_id") @db.Uuid
+  recordedBy      String?      @map("recorded_by") @db.Uuid
+  movementType    MovementType @map("movement_type")
+  /// CHECK (quantity > 0) — direction is carried by movementType, never a sign.
+  quantity        Decimal      @db.Decimal(14, 3)
+  occurredAt      DateTime     @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  reference       String?
+  notes           String?
+
+  item     InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  recorder User?         @relation(fields: [recordedBy], references: [id], onDelete: SetNull)
+
+  @@index([inventoryItemId, occurredAt(sort: Desc)], map: "inventory_movements_item_occurred_idx")
+  @@map("inventory_movements")
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace
+// ---------------------------------------------------------------------------
+
+model MarketplaceListing {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  cropCycleId    String? @map("crop_cycle_id") @db.Uuid
+
+  title         String
+  description   String?
+  /// CHECK (quantity_kg > 0)
+  quantityKg    Decimal       @map("quantity_kg") @db.Decimal(14, 2)
+  /// CHECK (price_per_kg >= 0)
+  pricePerKg    Decimal       @map("price_per_kg") @db.Decimal(12, 2)
+  availableFrom DateTime?     @map("available_from") @db.Date
+  status        ListingStatus @default(draft)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cropCycle    CropCycle?   @relation(fields: [cropCycleId], references: [id], onDelete: SetNull)
+
+  @@index([status], map: "marketplace_listings_status_idx")
+  @@map("marketplace_listings")
+}
