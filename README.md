@@ -156,6 +156,79 @@ anyone.
 `lib/prisma.ts`, so it cannot reach a response through a relation include or a
 whole-row serialization. Sign-in is the one place that asks for it back explicitly.
 
+## Pages
+
+The app is a thin shell over the API: two signed-out pages, and everything else
+behind a session.
+
+| Route | Purpose |
+| --- | --- |
+| `/signup` | Create an account, optionally creating an organization you own. |
+| `/login` | Sign in. |
+| `/` | Dashboard: the selected organization's crops and listings. |
+| `/crops/new` | Add a crop to the selected organization. |
+| `/listings/new` | List produce for sale. |
+
+### Dashboard
+
+`/` shows one organization at a time. Which one is decided from the session — a
+`?org=` that names an organization the caller does not belong to is ignored and the
+first membership is used, so a stale link degrades to a working page instead of a 403.
+Someone in more than one organization gets a switcher; someone in one gets no
+redundant chrome. Listing cards carry their status transitions (publish, mark sold,
+archive), each a `PATCH { status }` on the listing.
+
+Server Components reach the data by calling the API over HTTP with the session cookie
+forwarded (`lib/server-api.ts`) rather than querying Prisma directly. Every scoping
+rule already lives in the route handlers and is tested there; going through HTTP reuses
+those rules exactly instead of reimplementing them beside the markup, where the two
+would drift.
+
+The cost is a local round trip per panel, and it is not free: against a remote database
+in development the dashboard renders in roughly 1.8s, since each call re-resolves the
+session before running its query. Two things already cut it — `getCurrentSession` is
+memoized per request with React's `cache`, and the page decides which organization to
+show from the session so all three requests go out in parallel rather than in series.
+If it needs to be faster still, the fix is to extract the queries into functions that
+the routes and the pages both call — not to hand-roll the scoping again in a page.
+
+Each panel renders its own error, so one failing request degrades that section rather
+than blanking the dashboard.
+
+Route groups do the gating. `app/(auth)/layout.tsx` redirects anyone who is *already*
+signed in to `/`, and `app/(app)/layout.tsx` redirects anyone who is *not* to `/login`
+and renders the header with the signed-in email and a sign-out button. Splitting them
+this way means neither layout can bounce a request into the other forever, which a
+single check at the root would.
+
+That redirect is what makes the pages private in the browser; it is not what makes the
+data private. Every API route still runs its own `requireUser()` and membership checks,
+so a request that skips the UI is refused regardless.
+
+### Forms
+
+Forms post to the API routes and render the `ActionResult` envelope through the shared
+components in `components/form.tsx`:
+
+- `Field` wires a label, an optional hint, and any `fieldErrors` for that input to the
+  control, including the `aria-invalid` and `aria-describedby` a screen reader needs —
+  an error nobody is told about is not handled.
+- `FormError` shows failures belonging to no single input, such as a wrong password.
+  It is suppressed when individual fields are already marked, so a generic
+  "Validation failed." never sits above three specific messages.
+- `lib/forms.ts` posts JSON and always returns the envelope, turning a dropped
+  connection or a non-JSON response into a message the form can show rather than an
+  unhandled rejection.
+
+Submission is handled with `onSubmit` and `preventDefault` rather than `<form action>`:
+React resets an uncontrolled form once an action resolves, which would empty every
+field the moment one of them failed validation — leaving someone who mistyped a
+password to retype their name, email, and organization too.
+
+Nested payload errors are flattened onto their top-level key by Zod, so a problem
+inside the `organization` object arrives as `organization` rather than
+`organization.name`; the sign-up form shows both keys on the organization name field.
+
 ## Authorization
 
 Every endpoint except `register`, `login`, `logout`, and `health` requires a session.

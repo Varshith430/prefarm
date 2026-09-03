@@ -9,6 +9,8 @@
  *     if (!auth.ok) return auth.response;
  */
 
+import { cache } from "react";
+
 import { MembershipRole } from "@/app/generated/prisma/enums";
 import { apiError } from "@/lib/api";
 
@@ -47,12 +49,18 @@ export type GuardResult =
 /**
  * Reads the session cookie and resolves it. Returns null rather than an error
  * for anonymous callers, so a handler can serve them differently.
+ *
+ * Memoized per request with React's `cache`: a layout and the page it wraps
+ * both need the session, and without this each one would spend a round trip to
+ * the database rediscovering the same answer.
  */
-export async function getCurrentSession(): Promise<ResolvedSession | null> {
-  const token = await readSessionCookie();
-  if (!token) return null;
-  return resolveSessionToken(token);
-}
+export const getCurrentSession = cache(
+  async (): Promise<ResolvedSession | null> => {
+    const token = await readSessionCookie();
+    if (!token) return null;
+    return resolveSessionToken(token);
+  },
+);
 
 /** 401 unless the request carries a valid session. */
 export async function requireUser(): Promise<GuardResult> {
