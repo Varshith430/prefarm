@@ -66,6 +66,8 @@ export interface ResolvedSession {
     createdAt: Date;
     updatedAt: Date;
   };
+  /** Platform-wide administration; not scoped to any organization. */
+  isPlatformAdmin: boolean;
   /** The caller's role in each organization they belong to. */
   memberships: { organizationId: string; role: string }[];
   expiresAt: Date;
@@ -123,6 +125,7 @@ export async function resolveSessionToken(
       updatedAt: user.updatedAt,
     },
     memberships: user.memberships,
+    isPlatformAdmin: user.isPlatformAdmin,
     expiresAt: session.expiresAt,
   };
 }

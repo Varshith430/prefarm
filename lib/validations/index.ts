@@ -1,6 +1,7 @@
 /** Barrel for the platform's request/payload validation schemas. */
 export * from "./common";
 export * from "./auth";
+export * from "./admin";
 export * from "./organization";
 export * from "./farm";
 export * from "./crop";

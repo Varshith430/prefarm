@@ -144,6 +144,7 @@ Every route lives under `app/api/`, runs on the Node runtime, and answers with t
 | Inventory | `GET POST /api/inventory` · `GET PATCH DELETE /api/inventory/:id` · `GET POST /api/inventory/:id/movements` |
 | Listings | `GET POST /api/listings` · `GET PATCH DELETE /api/listings/:id` |
 | Offers | `GET POST /api/offers` · `PATCH /api/offers/:id` |
+| Admin | `GET /api/admin/organizations` · `PATCH /api/admin/organizations/:id` |
 
 Status codes are consistent across resources: `400` for a malformed body or query,
 `401` when a session is required and absent, `403` when the caller is signed in but
@@ -213,6 +214,10 @@ behind a session.
 | `/` | Dashboard: the selected organization's crops and listings. |
 | `/crops/new` | Add a crop to the selected organization. |
 | `/listings/new` | List produce for sale. |
+| `/marketplace` | Every published listing, cheapest first. |
+| `/marketplace/:id` | One listing — bids if you are selling, a bid form if you are not. |
+| `/organizations/new` | Create an organization; you become its owner. |
+| `/admin` | Platform administrators only: the verification queue. |
 
 ### Dashboard
 
@@ -249,6 +254,37 @@ single check at the root would.
 That redirect is what makes the pages private in the browser; it is not what makes the
 data private. Every API route still runs its own `requireUser()` and membership checks,
 so a request that skips the UI is refused regardless.
+
+### Organizations
+
+Anyone signed in may create an organization at `/organizations/new` and becomes its
+owner. Until this existed, someone who signed up without naming an organization landed
+on a dashboard telling them to create one with nothing to click — `POST
+/api/organizations` had always allowed it, but nothing in the app asked.
+
+Two tenants may legitimately share a display name, so a derived slug that collides
+takes a short random suffix (`green-valley-farms-7f3a`) instead of failing a request
+whose slug the caller never saw. A slug sent explicitly is taken at the caller's word
+and a collision is theirs to resolve. Registration and this endpoint share one
+implementation of that rule (`availableSlug` in `lib/slug.ts`).
+
+### Marketplace and bidding
+
+`/marketplace/:id` is one page that shows two different things depending on who is
+looking: the selling organization's members see every bid with accept and reject
+buttons, and everybody else sees a bid form and their own bids. The page does not
+implement that rule — it renders whatever `GET /api/offers?listingId=` returns, and the
+API is what decides that a buyer sees only their own bids. A UI branch and a security
+boundary in the same place would eventually disagree; this way the page can only ever
+show what the caller was already allowed to fetch.
+
+The bid form starts at the seller's asking price and quantity, since agreeing outright
+is the common case and retyping the numbers to do it is friction. While a bid is
+awaiting an answer the form is replaced by its status, because a second pending bid on
+the same listing is refused by the database; once the seller answers, the form returns.
+
+`GET /api/listings` now includes the seller's name, so a marketplace row can say who is
+selling without a query per row.
 
 ### Forms
 
@@ -345,9 +381,60 @@ offer may be for part of the listed quantity, so what happens to the remainder i
 seller's decision, made through `PATCH /api/listings/:id`. A buyer whose bid was
 rejected may bid again; the partial unique index only stops a second *pending* bid.
 
-Not built: a buyer cannot withdraw a bid, which would need a fourth status
-(`withdrawn`) rather than reusing `rejected` — that word should keep meaning the seller
-said no.
+**Withdrawal** (`PATCH { status: "withdrawn" }`) is the buyer's counterpart, authorized
+against the organization that *made* the bid. A seller cannot withdraw on a buyer's
+behalf — refusing is what `rejected` is for, and the two need to stay distinguishable
+afterwards, which is why `withdrawn` is a fourth status rather than a reuse of the
+third. Withdrawing is as final as any other transition, but it does free the buyer to
+bid again: the index that allows one live bid per listing counts only `pending` ones.
+The seller keeps seeing the withdrawn bid, labelled as taken back.
+
+### Platform administration and verification
+
+Every privilege in `organization_members` describes authority inside one organization,
+so none of them can express "may review other people's tenants". Verification therefore
+needs a privilege that is not scoped to a tenant at all: `users.is_platform_admin`,
+checked by `requirePlatformAdmin()`.
+
+**That flag must never enter `updateUserSchema`.** Users can already PATCH their own
+record; the moment the flag is accepted there, platform administration becomes
+self-service. The schema takes email, full name, and phone, and that is the whole
+reason it should stay that way. The first administrator is promoted by hand:
+
+```sql
+UPDATE users SET is_platform_admin = true WHERE email = 'you@example.com';
+```
+
+The flag is read into the session, so an existing session must be signed out and back in
+before it takes effect.
+
+`organizations.verified_at` is NULL until granted — a timestamp rather than a boolean,
+so the row records *when*, and revoking is setting it back to NULL through the same
+endpoint. The admin routes live under `/api/admin` rather than beside the tenant-scoped
+ones precisely because they break the rule those follow: they see every organization,
+and putting them in the same folder would make the exception easy to imitate by
+accident. `PATCH /api/admin/organizations/:id` can change nothing but `verified_at` —
+a route able to edit any tenant's name or type would be a far larger hole than the one
+it exists to fill.
+
+**Verification gates selling, not membership.** An unverified organization can do
+everything else — farms, fields, crops, cycles, sensors, tasks, stock — but
+`POST /api/listings` refuses it with a 403, and its listings stay off the marketplace.
+The dashboard says so plainly and hides the "New listing" link, rather than letting
+someone fill in a form that can only be rejected.
+
+A listing is visible when **either** it belongs to one of the caller's own
+organizations — all of their own rows, whatever the status, verified or not, because
+this endpoint also backs their dashboard — **or** it is published by a verified
+organization, which is what puts it on the public market. The same rule guards
+`GET /api/listings/:id`, so a direct link cannot walk past the marketplace filter, and
+`POST /api/offers`, since verification can be revoked after a listing was published.
+
+Revocation is therefore immediate and non-destructive: buyers stop seeing the listing
+and can no longer bid, while the seller keeps it on their own dashboard.
+
+`/admin` answers as a missing page for anyone without the flag rather than 403 — a
+permission error would itself disclose that platform administration exists.
 
 ### Two deliberate exceptions
 

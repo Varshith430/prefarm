@@ -74,10 +74,21 @@ export async function POST(request: Request) {
   try {
     const listing = await prisma.marketplaceListing.findUnique({
       where: { id: listingId },
-      select: { id: true, organizationId: true, status: true },
+      select: {
+        id: true,
+        organizationId: true,
+        status: true,
+        organization: { select: { verifiedAt: true } },
+      },
     });
 
-    if (!listing || listing.status !== ListingStatus.active) {
+    // Verification can be revoked after a listing was published, so this is
+    // checked here too rather than assumed from the listing's existence.
+    if (
+      !listing ||
+      listing.status !== ListingStatus.active ||
+      listing.organization.verifiedAt === null
+    ) {
       return apiError(422, "That listing is not open for offers.", {
         listingId: ["No published listing with this id."],
       });

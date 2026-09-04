@@ -9,16 +9,11 @@ import {
 import { createSession, hashPassword, setSessionCookie } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serialize } from "@/lib/serialize";
-import { slugify } from "@/lib/slug";
+import { availableSlug, slugify } from "@/lib/slug";
 import { registerSchema } from "@/lib/validations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Appended to a taken slug to make it unique, e.g. `green-valley-7f3a`. */
-function uniqueSuffix(): string {
-  return Math.random().toString(36).slice(2, 6);
-}
 
 /**
  * POST /api/auth/register
@@ -52,17 +47,16 @@ export async function POST(request: Request) {
 
       // The slug is derived from the name; a collision takes a short random
       // suffix rather than failing a sign-up the caller cannot fix.
-      const base = slugify(organization.name) || "org";
-      let slug = base;
+      const slug = await availableSlug(
+        slugify(organization.name) || "org",
+        async (candidate) =>
+          (await tx.organization.findUnique({
+            where: { slug: candidate },
+            select: { id: true },
+          })) !== null,
+      );
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        const taken = await tx.organization.findUnique({
-          where: { slug },
-          select: { id: true },
-        });
-        if (!taken) break;
-        slug = `${base}-${uniqueSuffix()}`;
-      }
+      if (!slug) throw new Error("Could not find a free slug for the organization.");
 
       const record = await tx.organization.create({
         data: {

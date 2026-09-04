@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { SignOutButton } from "@/components/sign-out-button";
@@ -23,7 +24,31 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex flex-1 flex-col">
       <header className="border-b border-zinc-200 dark:border-zinc-800">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-4 py-3">
-          <p className="text-sm font-semibold tracking-tight">AgriTech</p>
+          <nav className="flex items-center gap-4">
+            <Link href="/" className="text-sm font-semibold tracking-tight">
+              AgriTech
+            </Link>
+            <Link
+              href="/"
+              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/marketplace"
+              className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+            >
+              Marketplace
+            </Link>
+            {session.isPlatformAdmin ? (
+              <Link
+                href="/admin"
+                className="text-sm text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+              >
+                Admin
+              </Link>
+            ) : null}
+          </nav>
 
           <div className="flex items-center gap-3">
             <span

@@ -29,11 +29,17 @@ export const createOfferSchema = z.object({
 });
 
 /**
- * A seller's answer to a bid. `pending` is not accepted: it is where an offer
- * starts, not something it can be moved back to once answered.
+ * A change of state on a bid. Who may ask for which is decided by the route,
+ * not here: `accepted` and `rejected` belong to the seller, `withdrawn` to the
+ * buyer. `pending` is absent — it is where an offer starts, not somewhere it
+ * can be moved back to once it has been answered or taken back.
  */
 export const respondToOfferSchema = z.object({
-  status: z.enum([OfferStatus.accepted, OfferStatus.rejected]),
+  status: z.enum([
+    OfferStatus.accepted,
+    OfferStatus.rejected,
+    OfferStatus.withdrawn,
+  ]),
 });
 
 export const offerQuerySchema = offsetPaginationSchema.extend({

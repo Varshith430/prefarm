@@ -13,7 +13,7 @@ import {
 import { organizationIdsFor, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serialize } from "@/lib/serialize";
-import { slugify } from "@/lib/slug";
+import { availableSlug, slugify } from "@/lib/slug";
 import {
   createOrganizationSchema,
   organizationQuerySchema,
@@ -45,9 +45,10 @@ export async function POST(request: Request) {
   if (!parsed.success) return validationError(parsed.error);
 
   const { name, description, organizationType } = parsed.data;
-  const slug = parsed.data.slug ?? slugify(name);
+  const requestedSlug = parsed.data.slug;
+  const base = requestedSlug ?? slugify(name);
 
-  if (!slug) {
+  if (!base) {
     return apiError(
       400,
       "Could not derive a slug from the name. Provide `slug` explicitly.",
@@ -56,6 +57,25 @@ export async function POST(request: Request) {
   }
 
   try {
+    // A slug the caller typed is taken at their word, and a collision is their
+    // conflict to resolve. One derived from the name is not: two tenants may
+    // legitimately share a display name, so a collision takes a suffix rather
+    // than failing a request whose slug the caller never saw.
+    const slug = requestedSlug
+      ? requestedSlug
+      : await availableSlug(base, async (candidate) =>
+          (await prisma.organization.findUnique({
+            where: { slug: candidate },
+            select: { id: true },
+          })) !== null,
+        );
+
+    if (!slug) {
+      return apiError(409, "Could not find a free address for that name.", {
+        name: ["Too many organizations already use this name."],
+      });
+    }
+
     const organization = await prisma.organization.create({
       data: {
         name,
@@ -73,11 +93,17 @@ export async function POST(request: Request) {
       `/api/organizations/${organization.id}`,
     );
   } catch (error) {
-    // Unique violation — only `slug` is unique on this table.
+    // Unique violation — only `slug` is unique on this table. With a derived
+    // slug this can now only be a race: two requests that picked the same
+    // suffix between the availability check and the insert.
     if (isPrismaKnownError(error) && error.code === "P2002") {
-      return apiError(409, `An organization with the slug "${slug}" already exists.`, {
-        slug: ["Already taken."],
-      });
+      return requestedSlug
+        ? apiError(409, `An organization with the slug "${requestedSlug}" already exists.`, {
+            slug: ["Already taken."],
+          })
+        : apiError(409, "That name was taken while this request ran. Try again.", {
+            name: ["Try again."],
+          });
     }
     return infrastructureError("organizations", error);
   }

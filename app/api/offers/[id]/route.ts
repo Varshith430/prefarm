@@ -20,17 +20,23 @@ type Context = { params: Promise<{ id: string }> };
 
 /**
  * PATCH /api/offers/:id
- * Body: { status: "accepted" | "rejected" }
+ * Body: { status: "accepted" | "rejected" | "withdrawn" }
  *
- * The seller's answer to a bid. Authorized against the organization that owns
- * the *listing*, not the one that owns the offer row — the buyer may read
- * their own offer but must not be able to accept it.
+ * Both sides of a bid act through this endpoint, and which side you are on
+ * decides what you may ask for:
  *
- * Answering is final: an offer leaves `pending` once, so a rejection cannot be
- * quietly reversed, and two managers acting at the same time cannot both
- * "win". Accepting deliberately does not mark the listing sold or turn down
- * the other bids: an offer may be for part of the quantity, so what happens to
- * the rest of the listing is the seller's decision, made through
+ * - `accepted` and `rejected` are the **seller's** answer, authorized against
+ *   the organization that owns the *listing* — the buyer may read their own
+ *   offer but must never be able to accept it;
+ * - `withdrawn` is the **buyer** taking the bid back, authorized against the
+ *   organization that made it. A seller cannot withdraw a bid on the buyer's
+ *   behalf; refusing it is what `rejected` is for.
+ *
+ * Every transition is final and leaves `pending` exactly once, so a rejection
+ * cannot be quietly reversed and two people acting at the same moment cannot
+ * both succeed. Accepting deliberately does not mark the listing sold or turn
+ * down the other bids: an offer may be for part of the quantity, so what
+ * happens to the rest of the listing is the seller's decision, made through
  * PATCH /api/listings/:id.
  */
 export async function PATCH(request: Request, context: Context) {
@@ -52,25 +58,33 @@ export async function PATCH(request: Request, context: Context) {
     const parties = await findOfferParties(route.id);
     if (!parties) return notFoundError("Offer");
 
-    const allowed = authorizeOrg(
-      auth.session,
-      parties.sellerOrganizationId,
-      WRITE,
-    );
+    // Withdrawal belongs to the side that made the bid; answering to the side
+    // that owns the listing.
+    const withdrawing = status === OfferStatus.withdrawn;
+    const actingOrganizationId = withdrawing
+      ? parties.buyerOrganizationId
+      : parties.sellerOrganizationId;
+
+    const allowed = authorizeOrg(auth.session, actingOrganizationId, WRITE);
 
     if (!allowed.ok) {
-      // The buyer can see this offer but cannot answer it. Saying so is
-      // clearer than the generic membership message, and reveals nothing they
-      // did not already know about their own bid.
-      const isBuyer = authorizeOrg(
-        auth.session,
-        parties.buyerOrganizationId,
-        WRITE,
-      ).ok;
+      // Being on the *other* side of this bid is a different situation from
+      // being a stranger to it, and worth saying plainly — it reveals nothing
+      // the caller did not already know about a bid they are party to.
+      const otherSide = withdrawing
+        ? parties.sellerOrganizationId
+        : parties.buyerOrganizationId;
 
-      return isBuyer
-        ? apiError(403, "Only the seller can accept or reject an offer.")
-        : allowed.response;
+      if (authorizeOrg(auth.session, otherSide, WRITE).ok) {
+        return apiError(
+          403,
+          withdrawing
+            ? "Only the buyer can withdraw a bid. Reject it instead."
+            : "Only the seller can accept or reject an offer.",
+        );
+      }
+
+      return allowed.response;
     }
 
     // Guarded so the transition happens exactly once: the status check and the
@@ -83,7 +97,7 @@ export async function PATCH(request: Request, context: Context) {
 
     if (answered.count === 0) {
       return apiError(409, `This offer has already been ${parties.status}.`, {
-        status: ["Only a pending offer can be answered."],
+        status: ["Only a pending offer can be answered or withdrawn."],
       });
     }
 

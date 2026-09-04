@@ -217,6 +217,29 @@ export function scopeToMemberships(
 }
 
 /**
+ * Platform administration: the one privilege that crosses every tenant.
+ *
+ * Held by a flag on the user rather than a membership role, because every role
+ * in `organization_members` describes authority inside one organization and
+ * can say nothing about the platform. 401 when signed out, 403 otherwise.
+ */
+export async function requirePlatformAdmin(): Promise<GuardResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return auth;
+
+  if (!auth.session.isPlatformAdmin) {
+    // Deliberately the same wording a non-member gets elsewhere: there is no
+    // reason to tell a caller that platform administration exists.
+    return {
+      ok: false,
+      response: apiError(403, "You do not have access to this."),
+    };
+  }
+
+  return auth;
+}
+
+/**
  * For actions that are not scoped to one tenant but must not be open to any
  * signed-in stranger — creating a platform user record, for instance. Requires
  * the caller to be an owner somewhere.

@@ -61,11 +61,16 @@ export function LoadError({ message }: { message: string }) {
   );
 }
 
+/** Tones for both listing statuses and offer statuses. */
 const LISTING_TONES: Record<string, string> = {
   draft: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
   active: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
   sold: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
   archived: "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-500",
+  pending: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  accepted: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  rejected: "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-500",
+  withdrawn: "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-500",
 };
 
 export function StatusBadge({ status }: { status: string }) {
@@ -78,6 +83,32 @@ export function StatusBadge({ status }: { status: string }) {
       className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${tone}`}
     >
       {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+/**
+ * Marks an organization a platform administrator has checked. Rendered only
+ * when verification has actually been granted — an absent badge is what
+ * "unverified" looks like, rather than a second, louder badge.
+ */
+export function VerifiedBadge({ verifiedAt }: { verifiedAt: string | null }) {
+  if (!verifiedAt) return null;
+
+  return (
+    <span
+      title={`Verified on ${formatDate(verifiedAt)}`}
+      className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-950 dark:text-green-200"
+    >
+      <svg
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        className="h-3 w-3"
+        fill="currentColor"
+      >
+        <path d="M6.5 11.3 3.2 8l1.1-1.1 2.2 2.2 5-5L12.6 5z" />
+      </svg>
+      Verified
     </span>
   );
 }

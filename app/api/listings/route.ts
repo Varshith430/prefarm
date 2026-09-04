@@ -62,6 +62,26 @@ export async function POST(request: Request) {
 
   const organizationId = target.organizationId;
 
+  // Verification gates selling, not membership: an unverified organization can
+  // do everything else — farms, fields, crops, tasks, stock — but cannot put
+  // produce in front of buyers until a platform administrator has checked it.
+  const seller = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { verifiedAt: true },
+  });
+
+  if (!seller) {
+    return apiError(409, "The organization was removed while this request ran.");
+  }
+
+  if (seller.verifiedAt === null) {
+    return apiError(
+      403,
+      "This organization has not been verified yet, so it cannot create listings.",
+      { organizationId: ["Awaiting verification by a platform administrator."] },
+    );
+  }
+
   // Provenance may only point at the seller's own harvest.
   if (cropCycleId) {
     const access = await requireResourceRole(
@@ -123,11 +143,23 @@ export async function GET(request: Request) {
   const { limit, offset, status, organizationId, availableOn, maxPricePerKg } =
     parsed.data;
 
-  // Asking for a specific seller is allowed, but only their published rows
-  // unless the caller is a member of that organization.
+  // Two ways a listing can be visible:
+  //
+  //  1. it belongs to one of the caller's own organizations — they see all of
+  //     their own rows whatever the status, and whether or not their
+  //     organization has been verified, because this endpoint also backs their
+  //     dashboard and hiding their own drafts from them would be absurd;
+  //  2. it is published by a *verified* organization, which is what makes it
+  //     part of the public market.
   const mine = organizationIdsFor(auth.session);
   const visible = {
-    OR: [{ status: ListingStatus.active }, { organizationId: { in: mine } }],
+    OR: [
+      { organizationId: { in: mine } },
+      {
+        status: ListingStatus.active,
+        organization: { verifiedAt: { not: null } },
+      },
+    ],
   };
 
   const where = {
@@ -148,7 +180,20 @@ export async function GET(request: Request) {
     const [listings, total] = await prisma.$transaction([
       prisma.marketplaceListing.findMany({
         where,
-        include: { cropCycle: { include: { crop: true } } },
+        // The seller's name travels with the listing: a marketplace row that
+        // does not say who is selling is not much use to a buyer, and looking
+        // each one up separately would be a query per row.
+        include: {
+          cropCycle: { include: { crop: true } },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              organizationType: true,
+              verifiedAt: true,
+            },
+          },
+        },
         orderBy: [{ pricePerKg: "asc" }, { createdAt: "desc" }, { id: "desc" }],
         take: limit,
         skip: offset,

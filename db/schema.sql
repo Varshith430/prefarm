@@ -16,7 +16,7 @@ CREATE TYPE task_status AS ENUM ('todo', 'in_progress', 'done', 'cancelled');
 CREATE TYPE task_priority AS ENUM ('low', 'normal', 'high', 'urgent');
 CREATE TYPE movement_type AS ENUM ('purchase', 'usage', 'adjustment', 'transfer');
 CREATE TYPE listing_status AS ENUM ('draft', 'active', 'sold', 'archived');
-CREATE TYPE offer_status AS ENUM ('pending', 'accepted', 'rejected');
+CREATE TYPE offer_status AS ENUM ('pending', 'accepted', 'rejected', 'withdrawn');
 
 CREATE TABLE organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,6 +24,8 @@ CREATE TABLE organizations (
     slug TEXT NOT NULL UNIQUE,
     description TEXT,
     organization_type organization_type NOT NULL,
+    -- NULL until a platform administrator verifies the organization.
+    verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -35,6 +37,9 @@ CREATE TABLE users (
     phone TEXT,
     -- NULL means the account has no password yet and cannot be signed into.
     password_hash TEXT,
+    -- The only privilege on the platform not scoped to one organization.
+    -- Never exposed through the user update endpoint; see 005.
+    is_platform_admin BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -203,6 +208,7 @@ CREATE TABLE offers (
 );
 
 CREATE INDEX organizations_type_idx ON organizations(organization_type);
+CREATE INDEX organizations_verified_at_idx ON organizations(verified_at);
 CREATE INDEX sessions_user_id_idx ON sessions(user_id);
 CREATE INDEX sessions_expires_at_idx ON sessions(expires_at);
 CREATE INDEX fields_farm_id_idx ON fields(farm_id);

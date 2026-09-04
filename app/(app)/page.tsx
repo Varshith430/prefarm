@@ -9,6 +9,7 @@ import {
   LoadError,
   SectionHeader,
   StatusBadge,
+  VerifiedBadge,
   formatDate,
   formatDecimal,
 } from "@/components/ui";
@@ -56,7 +57,11 @@ export default async function DashboardPage({
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <EmptyState>
           You do not belong to an organization yet. Ask an owner to add you to
-          theirs, and their crops and listings will appear here.
+          theirs, or{" "}
+          <Link href="/organizations/new" className="font-medium underline underline-offset-4">
+            create your own
+          </Link>
+          .
         </EmptyState>
       </div>
     );
@@ -88,8 +93,9 @@ export default async function DashboardPage({
     <div className="flex flex-col gap-10">
       <header className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-tight">
             {selected?.name ?? "Your organization"}
+            <VerifiedBadge verifiedAt={selected?.verifiedAt ?? null} />
           </h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             {selected ? selected.organizationType.replace(/_/g, " ") : null}
@@ -98,6 +104,15 @@ export default async function DashboardPage({
         </div>
 
         {!organizations.ok ? <LoadError message={organizations.error} /> : null}
+
+        {selected && selected.verifiedAt === null ? (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            This organization is waiting to be verified. Everything else works
+            in the meantime — farms, fields, crops, tasks, and stock — but
+            produce cannot be published to the marketplace until verification
+            comes through.
+          </p>
+        ) : null}
 
         {organizations.ok && organizations.data.length > 1 ? (
           <nav
@@ -121,6 +136,9 @@ export default async function DashboardPage({
                 </Link>
               );
             })}
+            <Link href="/organizations/new" className={linkClassName}>
+              New organization
+            </Link>
           </nav>
         ) : null}
       </header>
@@ -176,12 +194,14 @@ export default async function DashboardPage({
           title="Listings"
           count={listings.ok ? listings.data.length : undefined}
           action={
-            <Link
-              href={`/listings/new?org=${selectedId}`}
-              className={linkClassName}
-            >
-              New listing
-            </Link>
+            selected && selected.verifiedAt === null ? null : (
+              <Link
+                href={`/listings/new?org=${selectedId}`}
+                className={linkClassName}
+              >
+                New listing
+              </Link>
+            )
           }
         />
 

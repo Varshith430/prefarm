@@ -45,9 +45,15 @@ export async function GET(_request: Request, context: Context) {
 
     if (!listing) return notFoundError("Listing");
 
-    // An unpublished listing is visible only inside the selling organization.
+    // The same rule as the collection: your own rows are always yours to read,
+    // and everyone else's only once published by a verified organization.
+    // Without this a direct link would walk straight past the marketplace
+    // filter.
     const isMember = roleIn(auth.session, listing.organizationId) !== null;
-    if (listing.status !== "active" && !isMember) {
+    const publiclyVisible =
+      listing.status === "active" && listing.organization.verifiedAt !== null;
+
+    if (!isMember && !publiclyVisible) {
       return notFoundError("Listing");
     }
 
