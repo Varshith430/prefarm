@@ -121,10 +121,14 @@ CREATE TABLE sensors (
     sensor_type sensor_type NOT NULL,
     unit TEXT NOT NULL,
     external_id TEXT,
+    -- SHA-256 of the device's bearer token; the token itself is never stored.
+    device_token_hash TEXT,
+    device_token_issued_at TIMESTAMPTZ,
     installed_at TIMESTAMPTZ,
     is_active BOOLEAN NOT NULL DEFAULT true,
     UNIQUE (field_id, name),
-    UNIQUE (external_id)
+    UNIQUE (external_id),
+    UNIQUE (device_token_hash)
 );
 
 CREATE TABLE sensor_readings (

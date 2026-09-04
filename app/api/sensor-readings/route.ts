@@ -8,7 +8,15 @@ import {
   searchParamsToObject,
   validationError,
 } from "@/lib/api";
-import { READ, WRITE, authorizeOrg, requireResourceRole, requireUser } from "@/lib/auth";
+import {
+  READ,
+  WRITE,
+  authorizeOrg,
+  readBearerToken,
+  requireResourceRole,
+  requireUser,
+  resolveDeviceToken,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serialize } from "@/lib/serialize";
 import {
@@ -28,18 +36,38 @@ export const dynamic = "force-dynamic";
  * buffer without creating double samples. The response reports how many rows
  * were actually written so a caller can tell a retry from fresh data.
  *
- * TODO(device credentials): this endpoint is called by field gateways, not by
- * people, so a user session is the wrong credential for it — a gateway cannot
- * hold a browser cookie, and giving one a human's login would hand it that
- * person's entire access. It needs a per-device credential instead: a token
- * issued when a sensor is registered, presented as a bearer header, scoped to
- * exactly the sensors that device owns, and revocable when the hardware is
- * lost. Until that exists the endpoint requires a session with write access to
- * every sensor in the batch, which is correct but unusable by real hardware.
+ * Two ways to authenticate, because two very different callers use this:
+ *
+ * - **A field gateway** sends `Authorization: Bearer <device token>`. That
+ *   token authorizes writing readings for exactly one sensor and nothing else:
+ *   it is not a stand-in for a member of the organization, so a batch naming
+ *   any other sensor is refused even when both sensors belong to the same
+ *   farm. A gateway that is compromised costs its own telemetry, not the
+ *   tenant.
+ * - **A person** (backfilling by hand, or a test) sends their session cookie
+ *   and needs write access to every sensor in the batch, as before.
+ *
+ * The bearer header wins when both are present: a request that presents a
+ * device credential is acting as that device.
  */
 export async function POST(request: Request) {
-  const auth = await requireUser();
-  if (!auth.ok) return auth.response;
+  const bearer = readBearerToken(request);
+
+  const device = bearer ? await resolveDeviceToken(bearer) : null;
+
+  // An unrecognized token is 401, never a fall-through to session auth: a
+  // gateway with a stale token must be told its credential is wrong, not
+  // silently treated as an anonymous caller.
+  if (bearer && !device) {
+    return apiError(401, "Unknown device token.");
+  }
+
+  if (device && !device.isActive) {
+    return apiError(403, "This sensor has been deactivated.");
+  }
+
+  const auth = device ? null : await requireUser();
+  if (auth && !auth.ok) return auth.response;
 
   const body = await readJsonBody(request);
   if (!body.ok) return body.response;
@@ -53,26 +81,44 @@ export async function POST(request: Request) {
   // thousand samples but only a handful of distinct sensors.
   const sensorIds = [...new Set(readings.map((reading) => reading.sensorId))];
 
-  const sensors = await prisma.sensor.findMany({
-    where: { id: { in: sensorIds } },
-    select: { id: true, field: { select: { farm: { select: { organizationId: true } } } } },
-  });
+  if (device) {
+    // The token speaks for one sensor. Anything else in the batch is refused
+    // outright rather than partially accepted, so a gateway cannot be used to
+    // write telemetry for its neighbours.
+    const foreign = sensorIds.filter((id) => id !== device.sensorId);
 
-  if (sensors.length !== sensorIds.length) {
-    const known = new Set(sensors.map((sensor) => sensor.id));
-    const missing = sensorIds.filter((id) => !known.has(id));
-    return apiError(422, "A reading references a sensor that does not exist.", {
-      readings: [`Unknown sensor id: ${missing[0]}.`],
+    if (foreign.length > 0) {
+      return apiError(
+        403,
+        "This device token can only write readings for its own sensor.",
+        { readings: [`Not this device's sensor: ${foreign[0]}.`] },
+      );
+    }
+  } else if (auth?.ok) {
+    const sensors = await prisma.sensor.findMany({
+      where: { id: { in: sensorIds } },
+      select: {
+        id: true,
+        field: { select: { farm: { select: { organizationId: true } } } },
+      },
     });
-  }
 
-  for (const sensor of sensors) {
-    const allowed = authorizeOrg(
-      auth.session,
-      sensor.field.farm.organizationId,
-      WRITE,
-    );
-    if (!allowed.ok) return allowed.response;
+    if (sensors.length !== sensorIds.length) {
+      const known = new Set(sensors.map((sensor) => sensor.id));
+      const missing = sensorIds.filter((id) => !known.has(id));
+      return apiError(422, "A reading references a sensor that does not exist.", {
+        readings: [`Unknown sensor id: ${missing[0]}.`],
+      });
+    }
+
+    for (const sensor of sensors) {
+      const allowed = authorizeOrg(
+        auth.session,
+        sensor.field.farm.organizationId,
+        WRITE,
+      );
+      if (!allowed.ok) return allowed.response;
+    }
   }
 
   try {
@@ -105,6 +151,10 @@ export async function POST(request: Request) {
  *
  * `from` is inclusive and `to` exclusive, so adjacent windows neither overlap
  * nor drop a sample on the boundary.
+ *
+ * Session only: a device token authorizes writing this sensor's telemetry, not
+ * reading back the history, so a stolen gateway cannot be used to harvest data
+ * it never saw.
  */
 export async function GET(request: Request) {
   const auth = await requireUser();

@@ -54,7 +54,12 @@ function createPrismaClient() {
     // reach a response through a `include: { user: true }` somewhere or a
     // whole-row serialization. The one place that needs it — verifying a
     // sign-in — asks for it explicitly with `omit: { passwordHash: false }`.
-    omit: { user: { passwordHash: true } },
+    omit: {
+      user: { passwordHash: true },
+      // The device token's hash is a credential verifier: it cannot be turned
+      // back into a token, but it has no business in an API response either.
+      sensor: { deviceTokenHash: true },
+    },
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]

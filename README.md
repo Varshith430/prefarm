@@ -138,7 +138,7 @@ Every route lives under `app/api/`, runs on the Node runtime, and answers with t
 | Fields | `GET POST /api/fields` · `GET PATCH DELETE /api/fields/:id` |
 | Crops | `GET POST /api/crops` · `GET PATCH DELETE /api/crops/:id` |
 | Crop cycles | `GET POST /api/crop-cycles` · `GET PATCH DELETE /api/crop-cycles/:id` · `POST /api/crop-cycles/:id/harvest` |
-| Sensors | `GET POST /api/sensors` · `GET PATCH DELETE /api/sensors/:id` |
+| Sensors | `GET POST /api/sensors` · `GET PATCH DELETE /api/sensors/:id` · `POST /api/sensors/:id/token` |
 | Readings | `GET POST /api/sensor-readings` |
 | Tasks | `GET POST /api/tasks` · `GET PATCH DELETE /api/tasks/:id` |
 | Inventory | `GET POST /api/inventory` · `GET PATCH DELETE /api/inventory/:id` · `GET POST /api/inventory/:id/movements` |
@@ -447,16 +447,57 @@ permission error would itself disclose that platform administration exists.
   cannot sign in. It reveals only that the service and database are up; the row counts
   are returned only to a signed-in caller, and only for that caller's own tenants.
 
+### Device credentials
+
+A field gateway cannot hold a browser cookie, and giving one a person's login would
+hand it that person's entire access. Each sensor therefore carries its own bearer
+token, issued when it is registered and returned **once** as `deviceToken` — only its
+SHA-256 is stored, for the same reason as sessions: a leaked database backup should not
+let anyone inject telemetry.
+
+That token authorizes exactly one thing: writing readings for that one sensor. A batch
+naming any other sensor is refused outright, even when both sensors sit in the same
+field, and the whole batch is rejected rather than partially written. It grants no read
+access at all — not the sensor's own history, not the sensor record, nothing in the
+tenant — so a stolen gateway costs its own telemetry and nothing else. A deactivated
+sensor stops accepting readings.
+
+Because only the hash is kept, a lost token cannot be looked up; it is replaced.
+`POST /api/sensors/:id/token` issues a new one and invalidates the old immediately,
+which keeps the sensor and every reading it has produced. Rotation needs WRITE on the
+owning organization — the same authority as registering the device. A device cannot
+rotate its own credential.
+
+`POST /api/sensor-readings` still accepts a session as well, for a person backfilling
+by hand, with the same requirement as before: write access to every sensor in the
+batch. When a bearer header is present it wins, and an unrecognized token is a 401
+rather than a fall-through to anonymous.
+
+### Sign-in rate limiting
+
+`POST /api/auth/login` allows five failures per email address per hour; the sixth is a
+`429` with a `Retry-After` header. A success clears the count. Addresses with no
+account are counted too — limiting only real accounts would make the 429 itself an
+oracle for which addresses exist.
+
+Attempts are keyed by **email, not IP**, because mobile networks put whole regions
+behind a handful of carrier-grade NAT addresses and an IP limit would lock out a
+village to slow one attacker. The trade-off is real and worth stating: someone who
+knows an address can lock its owner out for an hour. The fix if that becomes a problem
+is a second, much looser IP limit alongside this one, or a challenge after the first
+few failures — not swapping the key.
+
+**The counters live in this process's memory.** They are lost on restart and are not
+shared between instances, so behind two replicas an attacker gets the limit twice over.
+That is acceptable for a single server and is why `lib/rate-limit.ts` keeps the shape a
+shared store would have (`consume`, `peek`, `reset`): moving the counters to Redis is a
+change of backing store, not a change to the login route.
+
 ### Still open
 
-- **`POST /api/sensor-readings` needs device credentials.** It is called by field
-  gateways, not people, and a gateway cannot hold a browser cookie. It currently
-  requires a session with write access to every sensor in the batch — correct, but not
-  usable by real hardware. The fix is a per-device token issued when a sensor is
-  registered, presented as a bearer header, scoped to that device's sensors, and
-  revocable when the hardware is lost. Marked `TODO(device credentials)` in the route.
 - Platform-wide crops (`organization_id IS NULL`) are readable by everyone and
-  writable by nobody through the API, since there is no platform-administrator role to
-  hold that privilege.
-- No rate limiting on `/api/auth/login` (a per-address and per-IP limit belongs in
-  front of the scrypt work), no password reset flow, and no email verification.
+  writable by nobody through the API. Now that platform administrators exist, they are
+  the obvious holders of that privilege.
+- No password reset flow and no email verification.
+- A buyer cannot withdraw a bid after the seller has answered it, by design; there is
+  no messaging between buyer and seller.

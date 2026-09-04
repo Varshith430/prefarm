@@ -12,6 +12,7 @@ import {
 import {
   READ,
   WRITE,
+  issueDeviceToken,
   requireResourceRole,
   requireUser,
   scopeToMemberships,
@@ -30,6 +31,11 @@ export const dynamic = "force-dynamic";
  * The tenant comes from the parent field. `externalId` is the gateway's own
  * identifier and is unique platform-wide, so a device can be reconciled with
  * its telemetry source without guessing.
+ *
+ * Registering a sensor issues its device token, which is returned **once** in
+ * this response as `deviceToken` and never again — only its hash is stored.
+ * Configure the gateway with it now; a device that loses it gets a new one
+ * from POST /api/sensors/:id/token, which keeps the sensor and its readings.
  */
 export async function POST(request: Request) {
   const auth = await requireUser();
@@ -47,6 +53,8 @@ export async function POST(request: Request) {
   const access = await requireResourceRole(auth.session, "field", fieldId, WRITE);
   if (!access.ok) return access.response;
 
+  const device = issueDeviceToken();
+
   try {
     const sensor = await prisma.sensor.create({
       data: {
@@ -57,10 +65,15 @@ export async function POST(request: Request) {
         externalId: externalId ?? null,
         installedAt: installedAt ?? null,
         isActive,
+        deviceTokenHash: device.hash,
+        deviceTokenIssuedAt: device.issuedAt,
       },
     });
 
-    return apiCreated(serialize(sensor), `/api/sensors/${sensor.id}`);
+    return apiCreated(
+      { ...serialize(sensor), deviceToken: device.token },
+      `/api/sensors/${sensor.id}`,
+    );
   } catch (error) {
     if (isPrismaKnownError(error)) {
       if (error.code === "P2002") {

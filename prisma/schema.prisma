@@ -310,14 +310,18 @@ model CropCycle {
 // ---------------------------------------------------------------------------
 
 model Sensor {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fieldId     String     @map("field_id") @db.Uuid
-  name        String
-  sensorType  SensorType @map("sensor_type")
-  unit        String
-  externalId  String?    @unique @map("external_id")
-  installedAt DateTime?  @map("installed_at") @db.Timestamptz(6)
-  isActive    Boolean    @default(true) @map("is_active")
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fieldId             String     @map("field_id") @db.Uuid
+  name                String
+  sensorType          SensorType @map("sensor_type")
+  unit                String
+  externalId          String?    @unique @map("external_id")
+  /// SHA-256 of this device's bearer token. The token itself is never stored,
+  /// so it is shown once when issued and replaced by rotation if it is lost.
+  deviceTokenHash     String?    @unique @map("device_token_hash")
+  deviceTokenIssuedAt DateTime?  @map("device_token_issued_at") @db.Timestamptz(6)
+  installedAt         DateTime?  @map("installed_at") @db.Timestamptz(6)
+  isActive            Boolean    @default(true) @map("is_active")
 
   field    Field           @relation(fields: [fieldId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   readings SensorReading[]
