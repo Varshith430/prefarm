@@ -13,7 +13,7 @@ import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 
-export const SESSION_COOKIE = "agritech_session";
+export const SESSION_COOKIE = "prefarm_session";
 
 /** How long a new session lasts. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -68,8 +68,18 @@ export interface ResolvedSession {
   };
   /** Platform-wide administration; not scoped to any organization. */
   isPlatformAdmin: boolean;
-  /** The caller's role in each organization they belong to. */
-  memberships: { organizationId: string; role: string }[];
+  /**
+   * The caller's role in each organization they belong to, and what kind of
+   * organization it is. The type travels with the session because both sides
+   * of the app branch on it — the dashboard decides which half to show, and
+   * the seller-only routes decide whether to refuse — and resolving the
+   * session already touches these rows.
+   */
+  memberships: {
+    organizationId: string;
+    role: string;
+    organizationType: string;
+  }[];
   expiresAt: Date;
 }
 
@@ -84,7 +94,17 @@ export async function resolveSessionToken(
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(token) },
     include: {
-      user: { include: { memberships: { select: { organizationId: true, role: true } } } },
+      user: {
+        include: {
+          memberships: {
+            select: {
+              organizationId: true,
+              role: true,
+              organization: { select: { organizationType: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -124,7 +144,13 @@ export async function resolveSessionToken(
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
-    memberships: user.memberships,
+    // Flattened, so callers read `membership.organizationType` rather than
+    // reaching through a relation the rest of the session does not carry.
+    memberships: user.memberships.map((membership) => ({
+      organizationId: membership.organizationId,
+      role: membership.role,
+      organizationType: membership.organization.organizationType,
+    })),
     isPlatformAdmin: user.isPlatformAdmin,
     expiresAt: session.expiresAt,
   };

@@ -1,5 +1,5 @@
 {
-  "name": "agritech-platform",
+  "name": "prefarm",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "npx --yes tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^7.10.0",

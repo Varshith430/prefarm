@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { smallSecondaryButtonClass } from "@/components/ui";
 import { submitJson } from "@/lib/forms";
 
 /**
@@ -43,9 +44,9 @@ export function WithdrawBidButton({ offerId }: { offerId: string }) {
         type="button"
         onClick={withdraw}
         disabled={pending}
-        className="self-start rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+        className={`self-start ${smallSecondaryButtonClass}`}
       >
-        {pending ? "Withdrawing…" : "Withdraw bid"}
+        {pending ? "Withdrawing…" : "Withdraw offer"}
       </button>
 
       {error ? (

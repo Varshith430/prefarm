@@ -15,6 +15,7 @@ import {
   WRITE,
   organizationIdsFor,
   requireResourceRole,
+  requireSellingOrg,
   requireUser,
   resolveOrganizationId,
 } from "@/lib/auth";
@@ -61,6 +62,13 @@ export async function POST(request: Request) {
   if (!target.ok) return target.response;
 
   const organizationId = target.organizationId;
+
+  // Publishing produce belongs to the growing side of the market. A buyer,
+  // processor, or retailer is refused here rather than merely being denied the
+  // button on their dashboard — the type is checked before verification
+  // because no amount of verifying makes a buyer into a seller.
+  const selling = requireSellingOrg(auth.session, organizationId);
+  if (!selling.ok) return selling.response;
 
   // Verification gates selling, not membership: an unverified organization can
   // do everything else — farms, fields, crops, tasks, stock — but cannot put
@@ -184,7 +192,16 @@ export async function GET(request: Request) {
         // does not say who is selling is not much use to a buyer, and looking
         // each one up separately would be a query per row.
         include: {
-          cropCycle: { include: { crop: true } },
+          cropCycle: {
+            include: {
+              crop: true,
+              // Where the produce actually is. The marketplace filters and
+              // cards need it and the listing row itself has no location, so
+              // it is read through the harvest. Only the location column is
+              // selected: the rest of the farm stays private to its tenant.
+              field: { select: { farm: { select: { location: true } } } },
+            },
+          },
           organization: {
             select: {
               id: true,

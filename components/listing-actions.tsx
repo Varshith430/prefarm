@@ -3,6 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import {
+  smallPrimaryButtonClass,
+  smallSecondaryButtonClass,
+} from "@/components/ui";
 import { submitJson } from "@/lib/forms";
 
 /**
@@ -72,8 +76,8 @@ export function ListingActions({
             onClick={() => change(transition.next)}
             className={
               transition.quiet
-                ? "rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                : "rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                ? smallSecondaryButtonClass
+                : smallPrimaryButtonClass
             }
           >
             {transition.label}

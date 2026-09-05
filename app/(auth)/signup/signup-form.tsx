@@ -122,10 +122,10 @@ export function SignUpForm() {
         )}
       </Field>
 
-      <fieldset className="flex flex-col gap-4 rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+      <fieldset className="flex flex-col gap-4 rounded-md border border-line p-4">
         <legend className="px-1 text-sm font-medium">
           Your organization{" "}
-          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+          <span className="font-normal text-muted">
             (optional)
           </span>
         </legend>

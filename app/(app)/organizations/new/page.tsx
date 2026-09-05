@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { OrganizationForm } from "./organization-form";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { getCurrentSession } from "@/lib/auth";
 
-export const metadata: Metadata = { title: "New organization · AgriTech" };
+export const metadata: Metadata = { title: "New organization · PreFarm" };
 
 /**
  * Anyone signed in may create an organization and becomes its owner. This is
@@ -18,25 +18,24 @@ export default async function NewOrganizationPage() {
   const hasOrganizations = session.memberships.length > 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
+      <Breadcrumbs
+        items={[
+          ...(hasOrganizations ? [{ label: "Home", href: "/" }] : []),
+          { label: "New organization" },
+        ]}
+      />
+
       <div className="flex flex-col gap-1">
-        {hasOrganizations ? (
-          <Link
-            href="/"
-            className="text-sm text-zinc-500 underline underline-offset-4 dark:text-zinc-400"
-          >
-            Back to dashboard
-          </Link>
-        ) : null}
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl font-bold tracking-tight text-ink">
           New organization
         </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           You will be its owner, and can add colleagues afterwards.
         </p>
       </div>
 
-      <div className="max-w-md">
+      <div className="max-w-md rounded-lg border border-line bg-surface p-4">
         <OrganizationForm />
       </div>
     </div>

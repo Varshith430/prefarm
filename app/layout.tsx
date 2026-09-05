@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgriTech Platform",
+  title: "PreFarm",
   description: "Farm, crop, telemetry, and marketplace management.",
 };
 

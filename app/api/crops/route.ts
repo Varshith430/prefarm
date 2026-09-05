@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import {
   WRITE,
+  requireSellingOrg,
   requireUser,
   resolveOrganizationId,
   scopeToMemberships,
@@ -52,6 +53,11 @@ export async function POST(request: Request) {
   if (!target.ok) return target.response;
 
   const organizationId = target.organizationId;
+
+  // Crops are the varieties an organization grows, so they belong to the
+  // growing side of the market. A buyer has nothing to record here.
+  const selling = requireSellingOrg(auth.session, organizationId);
+  if (!selling.ok) return selling.response;
 
   try {
     const crop = await prisma.crop.create({

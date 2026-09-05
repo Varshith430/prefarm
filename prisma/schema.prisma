@@ -1,4 +1,4 @@
-// AgriTech platform — Prisma schema
+// PreFarm platform — Prisma schema
 //
 // This mirrors db/schema.sql (PostgreSQL 15+). Database identifiers stay
 // snake_case via @map/@@map so this schema matches an existing database.

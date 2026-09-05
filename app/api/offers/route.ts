@@ -37,6 +37,10 @@ const OFFER_INCLUDE = {
       quantityKg: true,
       pricePerKg: true,
       status: true,
+      // Who the offer was made to. A buyer looking at their own offers needs
+      // the name of the organization on the other side of each one, and it is
+      // a name they were already shown on the marketplace before they bid.
+      organization: { select: { id: true, name: true, verifiedAt: true } },
     },
   },
 } as const;

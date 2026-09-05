@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
+/*
+ * Storefront design tokens.
+ *
+ * Every colour a component uses is one of these names, so light and dark are
+ * two definitions of the same palette rather than a `dark:` variant hung on
+ * every element. The scheme follows the convention shoppers already know: a
+ * solid brand bar across the top, a soft grey page behind white product
+ * cards, and one warm accent kept for prices and the primary call to action.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Page behind the cards, and the cards themselves. */
+  --page: #f1f3f6;
+  --surface: #ffffff;
+  --surface-2: #f7f9fb;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --ink: #16202c;
+  --muted: #5c6b7a;
+  --line: #e0e5ec;
+
+  /* Brand green: the header bar, primary buttons, verified marks. */
+  --brand: #157a44;
+  --brand-strong: #0f5c33;
+  --brand-tint: #e7f4ec;
+
+  /* Reserved for prices and "buy" actions, as on any shopping site. */
+  --accent: #e07b12;
+  --accent-strong: #c26709;
+
+  /* Kept from the starter so any unconverted markup still resolves. */
+  --background: var(--page);
+  --foreground: var(--ink);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --page: #0b1016;
+    --surface: #141c25;
+    --surface-2: #1a2430;
+
+    --ink: #e8eef4;
+    --muted: #97a6b6;
+    --line: #26323f;
+
+    --brand: #1f9e58;
+    --brand-strong: #35b673;
+    --brand-tint: #12291d;
+
+    --accent: #f59b4a;
+    --accent-strong: #ffae66;
   }
 }
 
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-tint: var(--brand-tint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }

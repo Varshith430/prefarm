@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 
+import { primaryButtonClass } from "@/components/ui";
+
 /**
  * Form primitives that render the `ActionResult` envelope.
  *
@@ -64,7 +66,7 @@ export function Field({ name, label, hint, errors, children }: FieldProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={name} className="text-sm font-medium">
+      <label htmlFor={name} className="text-sm font-medium text-ink">
         {label}
       </label>
 
@@ -76,7 +78,7 @@ export function Field({ name, label, hint, errors, children }: FieldProps) {
       })}
 
       {hint ? (
-        <p id={hintId ?? undefined} className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p id={hintId ?? undefined} className="text-xs text-muted">
           {hint}
         </p>
       ) : null}
@@ -88,10 +90,9 @@ export function Field({ name, label, hint, errors, children }: FieldProps) {
 
 /** Shared input styling, so every control on every form matches. */
 export const controlClassName =
-  "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 " +
-  "placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-2 " +
-  "focus:ring-zinc-300 aria-[invalid]:border-red-500 aria-[invalid]:ring-red-200 " +
-  "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:ring-zinc-700 " +
+  "w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink " +
+  "placeholder:text-muted focus:border-brand focus:outline-none focus:ring-2 " +
+  "focus:ring-brand/30 aria-[invalid]:border-red-500 aria-[invalid]:ring-red-200 " +
   "dark:aria-[invalid]:ring-red-900";
 
 export function SubmitButton({
@@ -107,7 +108,7 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      className={primaryButtonClass}
     >
       {pending ? pendingLabel : children}
     </button>

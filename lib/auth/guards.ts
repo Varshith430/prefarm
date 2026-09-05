@@ -13,6 +13,7 @@ import { cache } from "react";
 
 import { MembershipRole } from "@/app/generated/prisma/enums";
 import { apiError } from "@/lib/api";
+import { organizationTypeLabel, sellsProduce } from "@/lib/org-types";
 
 import { readSessionCookie, resolveSessionToken, type ResolvedSession } from "./session";
 
@@ -90,6 +91,60 @@ export function organizationIdsFor(session: ResolvedSession): string[] {
 export type AuthorizationResult =
   | { ok: true }
   | { ok: false; response: Response };
+
+/** The kind of organization one of the caller's memberships is in. */
+export function organizationTypeIn(
+  session: ResolvedSession,
+  organizationId: string,
+): string | null {
+  const membership = session.memberships.find(
+    (candidate) => candidate.organizationId === organizationId,
+  );
+  return membership?.organizationType ?? null;
+}
+
+/**
+ * 403 unless this organization is one that sells produce.
+ *
+ * Keeping crops and publishing listings belong to the growing side of the
+ * marketplace. A buyer has no use for either, so the seller-only routes refuse
+ * them here rather than relying on the dashboard not to offer the button —
+ * a hidden control is not an authorization check.
+ *
+ * Callers run this after `authorizeOrg` (or `resolveOrganizationId`), so a
+ * non-member has already been refused and the type is read from the session's
+ * own memberships without another query.
+ */
+export function requireSellingOrg(
+  session: ResolvedSession,
+  organizationId: string,
+): AuthorizationResult {
+  const organizationType = organizationTypeIn(session, organizationId);
+
+  if (organizationType === null) {
+    return {
+      ok: false,
+      response: apiError(403, "You are not a member of this organization."),
+    };
+  }
+
+  if (!sellsProduce(organizationType)) {
+    return {
+      ok: false,
+      response: apiError(
+        403,
+        `A ${organizationTypeLabel(organizationType)} organization does not sell produce, so it cannot do this.`,
+        {
+          organizationId: [
+            "Only farms, cooperatives, and distributors keep crops and publish listings.",
+          ],
+        },
+      ),
+    };
+  }
+
+  return { ok: true };
+}
 
 /**
  * Checks a session against one organization. 403 when the caller is not a

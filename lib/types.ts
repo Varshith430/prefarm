@@ -1,5 +1,5 @@
 /**
- * Domain types for the AgriTech platform.
+ * Domain types for the PreFarm platform.
  *
  * Row types and enums come from the generated Prisma client so they can never
  * drift from prisma/schema.prisma. This module adds the things Prisma does not

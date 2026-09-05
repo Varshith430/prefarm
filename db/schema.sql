@@ -1,4 +1,4 @@
--- AgriTech platform database schema
+-- PreFarm platform database schema
 -- Target: PostgreSQL 15+
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

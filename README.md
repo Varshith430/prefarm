@@ -1,3 +1,5 @@
+# PreFarm
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -179,7 +181,7 @@ the response.
 ## Authentication
 
 Sessions are server-side. Signing in mints a 256-bit random token, returns it in an
-httpOnly `agritech_session` cookie, and stores only its SHA-256 in `sessions` — so a
+httpOnly `prefarm_session` cookie, and stores only its SHA-256 in `sessions` — so a
 leaked database dump cannot be replayed as a live session, and any session can be
 revoked. Passwords are hashed with scrypt from `node:crypto` (N=2^15, r=8, p=1), which
 keeps the platform free of a native build dependency; the cost parameters are stored

@@ -13,7 +13,7 @@ import { fieldErrorsOf, submitJson } from "@/lib/forms";
 import type { ActionResult } from "@/lib/types";
 
 /**
- * Places a bid on a listing.
+ * Places an offer on a listing — the "buy" control of the storefront.
  *
  * Price and quantity start at the seller's asking figures, which is the offer
  * a buyer is accepting outright — anything else is an edit away, and it saves
@@ -97,8 +97,8 @@ export function BidForm({
         </Field>
       </div>
 
-      <SubmitButton pending={pending} pendingLabel="Sending…">
-        Place bid
+      <SubmitButton pending={pending} pendingLabel="Placing offer…">
+        Place offer
       </SubmitButton>
     </form>
   );

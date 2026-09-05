@@ -12,11 +12,12 @@ import {
   formatDate,
 } from "@/components/ui";
 import { VerifyButton } from "@/components/verify-button";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { getCurrentSession } from "@/lib/auth";
 import { apiGet } from "@/lib/server-api";
 import type { OrganizationDTO, UserDTO } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Admin · AgriTech" };
+export const metadata: Metadata = { title: "Admin · PreFarm" };
 
 type AdminOrganization = OrganizationDTO & {
   members: { role: string; user: Pick<UserDTO, "id" | "fullName" | "email"> }[];
@@ -24,9 +25,9 @@ type AdminOrganization = OrganizationDTO & {
 };
 
 const tabClassName =
-  "rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800";
+  "rounded-md border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-ink";
 const activeTabClassName =
-  "rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900";
+  "rounded-md bg-brand-tint px-3 py-1.5 text-xs font-semibold text-brand";
 
 export default async function AdminPage({
   searchParams,
@@ -49,12 +50,16 @@ export default async function AdminPage({
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
+    <div className="flex flex-col gap-4">
+      <Breadcrumbs
+        items={[{ label: "Home", href: "/" }, { label: "Administration" }]}
+      />
+
+      <div className="flex flex-col gap-1 rounded-lg border border-line bg-surface p-4">
+        <h1 className="text-xl font-bold tracking-tight text-ink">
           Platform administration
         </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           An organization can use everything on the platform before it is
           verified, but cannot publish produce to the marketplace.
         </p>
@@ -101,11 +106,11 @@ export default async function AdminPage({
                   <Card>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex flex-col gap-0.5">
-                        <p className="flex flex-wrap items-center gap-2 font-medium">
+                        <p className="flex flex-wrap items-center gap-2 font-semibold text-ink">
                           {organization.name}
                           <VerifiedBadge verifiedAt={organization.verifiedAt} />
                         </p>
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        <p className="text-sm text-muted">
                           {organization.organizationType.replace(/_/g, " ")} ·{" "}
                           {organization.slug}
                         </p>
